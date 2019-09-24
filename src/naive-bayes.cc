@@ -47,20 +47,8 @@ int maxWordId = 0;
 map<string,int> wordids;
 vector<string> wvec;
 
-vector<string> rawdata;
-vector<string> rawids;
 
 map<string,string> featStrings;
-
-typedef struct _train_info {
-    string* tf;
-    string id;
-    string label;
-    int index;
-    int tid;
-} tr_info;
-
-
 map<int, vector<double> > *topcount;
 
 vector<double> *tprop;
@@ -75,13 +63,19 @@ double *corpcount;
 double *vocabSize;
 
 vector<string> topics;
-map<string, int> topicMap;
+
 
 vector<tr_info> *partitions;
 
 double *llrs;
 
-map<string, vector<int> > tffiles;
+//map<string, int> trainCorp.topicMap;
+//map<string, vector<int> > tffiles;
+//vector<string> rawdata;
+//vector<string> rawids;
+corpus trainCorp;
+
+
 set<int> stopwords;
 set<int> tstopwords;
 set<int> vocab;
@@ -208,16 +202,6 @@ void delete_arrays(int ND) {
 	
 	delete [] fcache;
 
-}
-
-std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems) {
-    std::stringstream ss(s);
-    std::string item;
-    elems.clear();
-    while(std::getline(ss, item, delim)) {
-        elems.push_back(item);
-    }
-    return elems;
 }
 
 
@@ -543,8 +527,6 @@ inline int read_testdocs(char *test) {
 	}
 		
 	testfiles.push_back(utt);
-	//docin.open(tffile.c_str());
-
 	testdocs.push_back(doc);
 	ss.clear();
 	ss.str(tfdata);
@@ -569,11 +551,11 @@ inline int read_testdocs(char *test) {
 	}	
 	docin.close();
 	
-	truth.push_back(topicMap[topic]);
+	truth.push_back(trainCorp.topicMap[topic]);
 	
 	truthMap.push_back(map<int,int>());
 	for (int tt=0; tt < tlist.size(); tt++) {
-	    truthMap[x][topicMap[tlist[tt]]] = 1;
+	    truthMap[x][trainCorp.topicMap[tlist[tt]]] = 1;
 	}
 	
 	
@@ -1152,69 +1134,10 @@ int main(int argc, char ** argv) {
 	exit(1);
     }
     
-    int ND = 0;
-    inf.open(train);
-    if (!inf.is_open()) {
-	cerr << "Unable to open " << train << ".\n";
-	exit(1);
-    }
-    
-    string tp,utt;
-    int cpos;
-    int cp2;
-    int slen;
-    while(1) {
-	getline(inf, line); 
-	if (inf.eof()) break;
-	vector<int> flist;	
-// HERE
-	if (debug) 
-	    cerr << line << "\n";
-	if ( line.size() < 1 ) continue;
 
-	cpos = line.find('\t', 0);
+    int ND = read_corpus(train, &trainCorp);
 
-	if (cpos == string::npos) continue;
-	tp = line.substr(0, cpos);
-	
-	cp2 = line.find('\t', cpos+1);
-	if (cp2 == string::npos) continue;
-
-	utt = line.substr(cpos+1, cp2-(cpos+1));
-	rawdata.push_back(line.substr(cp2+1));
-	rawids.push_back(utt);
-
-	dataval = rawdata.size()-1;
-
-	// what if tp =~ /:/?
-
-	if (strchr(tp.c_str(), ':')) {
-	    //
-	    vector<string> tlist;
-	    split(tp, ':', tlist);
-	    
-	    for (int tt=0; tt < tlist.size(); tt++) {
-		topicMap[tlist[tt]] = 1;
-		if (tffiles.count(tlist[tt]) == 0) {
-		    tffiles[tlist[tt]] = flist;
-		}
-		tffiles[tlist[tt]].push_back(dataval);
-	    }
-
-	    
-	}
-	else {
-	    topicMap[tp] = 1;
-	    if (tffiles.count(tp) == 0) {
-		tffiles[tp] = flist;
-	    }
-	    tffiles[tp].push_back(dataval);
-	}
-	ND++;
-    }
-    inf.close();
-    
-    topicCount = topicMap.size();
+    topicCount = trainCorp.topicMap.size();
     
     initialize_arrays(ND);
 	
@@ -1222,11 +1145,11 @@ int main(int argc, char ** argv) {
     map<int, double>::iterator di;
     
     int m=0;
-    for ( ii = topicMap.begin(); ii != topicMap.end(); ii++) {
+    for ( ii = trainCorp.topicMap.begin(); ii != trainCorp.topicMap.end(); ii++) {
 	topics.push_back((*ii).first);
 	(*ii).second = m++;
 	}
-    //	topicMap.clear();
+    //	trainCorp.topicMap.clear();
     
     int p;
     
@@ -1250,19 +1173,20 @@ int main(int argc, char ** argv) {
     counts = new int[K];
     memset(counts, 0, sizeof(int) * K);
     tr_info	 pinfo;
-    
+    string tp;
+
     // this partitioning strategy works if single labels
     for (i=0; i < topicCount; i++) {
 	tp = topics[i];
-	for (j=0; j < tffiles[tp].size(); j++) {
+	for (j=0; j < trainCorp.tffiles[tp].size(); j++) {
 	    p = j % K;
 	    
 	    tcount[p][i]++;
 	    tcount[K][i]++;
 	    
-	    pinfo.tf = &(rawdata[tffiles[tp][j]]);
+	    pinfo.tf = &(trainCorp.rawdata[trainCorp.tffiles[tp][j]]);
 	    //fprintf(stderr, "LINE %s\n", pinfo.tf->c_str());
-	    pinfo.id = rawids[tffiles[tp][j]];
+	    pinfo.id = trainCorp.rawids[trainCorp.tffiles[tp][j]];
 	    pinfo.label = topics[i];
 	    pinfo.index = j;
 	    pinfo.tid = i;
@@ -1297,7 +1221,6 @@ int main(int argc, char ** argv) {
 	    topic = info->label;
 	    index = info->index;
 	    
-
 	    // READ TF values
 	    //inf.open(info->tf.c_str());
 	    //if (!inf.is_open()) {

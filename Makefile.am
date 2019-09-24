@@ -13,11 +13,3 @@ nbdist_SOURCES = \
 nb_CXXFLAGS = -O3 -Iinclude
 nbdist_CXXFLAGS = -O3 -Iinclude
 
-#-std=c++11
-#-I@FBINC@ 
-
-#nb_LDADD = \
-#	-lboost_system \
-#	-lboost_program_options \
-#	-lboost_filesystem \
-#    -ldb_cxx -lpthread 
