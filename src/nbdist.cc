@@ -82,6 +82,7 @@ set<int> stopwords;
 
 vector<map<int,double> > testdocs;
 vector<vector<token_t> > testseqs;
+vector<string> testids;
 
 vector< map<int,double> >  *fcache;
 
@@ -175,6 +176,8 @@ int wfunc = EXP;
 
 FILE *outp = 0;
 
+bool verbose=false;
+
 void initialize_arrays(int ND) {
 
 	topcount = new map<int, vector<double> >[K+1];
@@ -230,7 +233,7 @@ int parse_args(int argc, char **argv) {
 
     int idx,opt;
     
-    while ((opt = getopt_long(argc,argv, "t:s:w:p:o:f:T:i:K:b:e:F:W:S:ducP:zl:I:B1:L:m:R:N:D:", opts, &idx)) != -1) {
+    while ((opt = getopt_long(argc,argv, "vt:s:w:p:o:f:T:i:K:b:e:F:W:S:ducP:zl:I:B1:L:m:R:N:D:", opts, &idx)) != -1) {
 	switch (opt) {
 	case 't':
 	    train = optarg; break;
@@ -299,6 +302,8 @@ int parse_args(int argc, char **argv) {
 	    else
 		lfunc = L1;
 	    break;
+	case 'v': 
+	    verbose=true; break;
 	default:
 	    argerr = "Unknown argument\n";
 	    return 1;	
@@ -632,7 +637,7 @@ inline int read_testdocs(char *test) {
 	if (debug) 
 	    cerr << line << "\n";
 
-	std::cerr << "WORD " << line << "\n";
+	//std::cerr << "WORD " << line << "\n";
 	if ( line.size() < 1 ) continue;
 	
 	cpos = line.find('\t', 0);
@@ -646,7 +651,7 @@ inline int read_testdocs(char *test) {
 	utt = line.substr(cpos+1, cp2-(cpos+1));
 	tfdata = line.substr(cp2+1);
 
-	//rawids.push_back(utt);
+	testids.push_back(utt);
 	//dataval = rawdata.size()-1;
     
 	vector<string> tlist;
@@ -669,7 +674,7 @@ inline int read_testdocs(char *test) {
 	    if (ss.eof()) break;
 	    
 	    ss >> word;
-	    std::cerr << "WORD " << word << "\n";
+	    //std::cerr << "WORD " << word << "\n";
 	    split(word, ':', parts);
 	    word = parts[0];
 	    count = strtod(parts[1].c_str(), 0);
@@ -746,7 +751,8 @@ vector<double> mu;
 vector<double> sigma;
 
 
-double score_test(int N, char *test, char *prdata, char *output, double* test_results, double *test_loss) {
+double score_test(int N, char *test, char *prdata, char *output, 
+		  double* test_results, double *test_loss, bool verbose) {
 
     int len;
     
@@ -832,9 +838,12 @@ double score_test(int N, char *test, char *prdata, char *output, double* test_re
 	
 	tid = truth[x];
 
-	if (output)
-	    fprintf(outp, "test %d %s", x, topics[truth[x]].c_str());
-
+	if (output) {
+	    if (verbose)
+		fprintf(outp, "test %d %s", x, topics[truth[x]].c_str());
+	    else 
+		fprintf(outp, "%s", testids[x].c_str());
+	}
 
 	maxLLR = -9999;
 	for (m=0; m < topicCount; m++) {
@@ -842,9 +851,12 @@ double score_test(int N, char *test, char *prdata, char *output, double* test_re
 	    if (znorm)
 		llrs[m] = (llrs[m] - mus[m]) / sigmas[m];
 
-	    if (output)
-		fprintf(outp, " %0.6f", llrs[m]);
-
+	    if (output) {
+		if (!verbose) 
+		    fprintf(outp, " %s %0.6f", topics[m].c_str(), llrs[m]);
+		else
+		    fprintf(outp, " %0.6f", llrs[m]);
+	    }
 	    
 	    if (lfunc != MCE) {//#ifndef ORIGINAL_LOSS
 		if (m == tid) {
@@ -1138,51 +1150,6 @@ int main(int argc, char ** argv) {
 	exit(1);
     }
 
-    /*int ND = 0;
-    inf.open(train);
-    if (!inf.is_open()) {
-	cerr << "Unable to open " << train << ".\n";
-	exit(1);
-    }
-
-
-    string tp;
-    while(!inf.eof()) {
-	inf >> tp;
-	if (inf.eof()) break;
-	inf >> val;
-	if (inf.eof()) break;
-
-	vector<string> flist;	
-	// HERE
-
-	if (strchr(tp.c_str(), ':')) {
-	    //
-	    vector<string> tlist;
-	    split(tp, ':', tlist);
-	    
-	    for (int tt=0; tt < tlist.size(); tt++) {
-		topicMap[tlist[tt]] = 1;
-		if (tffiles.count(tlist[tt]) == 0) {
-		    tffiles[tlist[tt]] = flist;
-		}
-		tffiles[tlist[tt]].push_back(val);
-	    }
-		    
-		    
-	}
-	else {
-	    topicMap[tp] = 1;
-	    if (tffiles.count(tp) == 0) {
-		tffiles[tp] = flist;
-	    }
-	    tffiles[tp].push_back(val);
-	}
-
-	ND++;
-    }
-    inf.close();
-    */
     int ND = read_corpus(train, &trainCorp);
     topicCount = trainCorp.topicMap.size();
 
@@ -1304,40 +1271,11 @@ int main(int argc, char ** argv) {
 		    location = atoi(parts[2].c_str());
 		else 
 		    location = 1;
-		
-		//fprintf(stderr, "FOUND %s %s %s\n", info->id.c_str(), word.c_str(), parts[1].c_str());
-		//inf >> word;
-		//inf >> count; 
-
-		/*inf.open(info->tf.c_str());
-	    
-		if (!inf.is_open()) {
-		    cerr << "Unable to open " << info->tf << "\n";
-		    exit(1);
-		}
-		
-		inf >> doclen;
-		
-		while (!inf.eof()) {
-		
-		    inf >> word;
-		    if (inf.eof()) break;
-		    inf >> count;
-		    if (inf.eof()) break;
-		    inf >> location; 
-		    
-		    if (inf.eof()) break;*/
-		
+				
 		wid = word_id(word);
 		
 		if (stopwords.find(wid) != stopwords.end()) continue;
-		
-		//	    if (defined($wclasses[word])) {
-		//	word = $wclasses[word];
-		//  }
-		    
-		
-		    
+				    
 		linfo.wid = wid;
 		linfo.weight = count;
 		linfo.location = location;
@@ -1513,7 +1451,10 @@ int main(int argc, char ** argv) {
 
     if (test) {
 	cerr << "Scoring test...\n";
-	error = score_test(-1, test, prdata, output, test_results, &testLoss);
+	error = score_test(-1, test, prdata, 
+			   (verbose || iterations == 0) ? output:0, 
+			   test_results, &testLoss, verbose);
+
 	ttestcount = topicCount;
 	cerr << "Done scoring test...\n";
 	
@@ -1583,6 +1524,7 @@ int main(int argc, char ** argv) {
     double lastLoss = -1;
     int backwards = 0;
     for (N= 0; N < iterations; N++) {
+	fflush(stdout);
 	avgLoss = 0;
 	A = 0;
 	
@@ -2002,16 +1944,9 @@ int main(int argc, char ** argv) {
 	    // but lets save some multiplies
 	    (*di).second = oldweight - epsilon * beta * partialSum[wid] / (double)ND;
 	    
-	    //	    if (debug && N % 10 == 0 ) {
-	    //	cerr << wvocab[wid] << " L:" << (*di).second << " DL:" << partialSum[wid] << "\n";
-	    //}
-	    
-	    //if (!strcmp(wvocab[wid].c_str(), "tardes"))
-	    //cout << "Partial "<< wid << " " << (partialSum[wid] / (double)ND)<< " " << oldweight << " " << (*di).second << "\n";
 	    if (prune > 0.0 && (*di).second < prune)
 		(*di).second = 0.0;
-	    
-	    
+	    	    
 	    if ((*di).second <= 0.0) {
 		(*di).second = 0.0;
 		zeros++;
@@ -2039,10 +1974,12 @@ int main(int argc, char ** argv) {
 
 			clock_t c1 = clock();
 			if  (N % prFreq == 0) {
-				error = score_test(N, test, prdata, output, test_results, &testLoss);
+			    error = score_test(N, test, prdata, 
+					       (verbose || iterations-1 == N) ? output:0, 
+					       test_results, &testLoss, verbose);
 			}
 			else {
-				error  = score_test(N, test, 0,0, test_results, &testLoss);
+			    error  = score_test(N, test, 0,0, test_results, &testLoss, verbose);
 			}
 			clock_t c2 = clock();
 		
